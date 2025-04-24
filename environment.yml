@@ -1,0 +1,11 @@
+name: scipy
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.13.3
+  - pip=25.0.1
+  - pip:
+      - black==25.1.0
+      - ruff==0.11.6
+      - typeguard==4.4.2
