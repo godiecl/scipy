@@ -83,6 +83,49 @@ def expandir(estado):
     return nuevo_estado
 
 
+def comprimir(estado):
+    # se realizo algun cambio?
+    cambios = True
+    while cambios:
+        cambios = False
+
+        # guardar dimensiones actuales para detectar cambios
+        filas_antes = len(estado)
+        if filas_antes == 0:
+            return estado
+        columnas_antes = len(estado[0])
+
+        # elimina la primera fila si contiene solo ceros
+        if all(celda == 0 for celda in estado[0]):
+            estado = estado[1:]
+            cambios = True
+
+        # verificar si el estado esta vacio después de eliminar filas
+        if not estado:
+            return estado
+
+        # elimina la ultima fila si contiene solo ceros
+        if all(celda == 0 for celda in estado[-1]):
+            estado = estado[:-1]
+            cambios = True
+
+        # verificar si el estado esta vacio después de eliminar filas
+        if not estado:
+            return estado
+
+        # elimina la primera columna si contiene solo ceros
+        if all(fila[0] == 0 for fila in estado):
+            estado = [fila[1:] for fila in estado]
+            cambios = True
+
+        # elimina la ultima columna si contiene solo ceros
+        if estado[0] and all(fila[-1] == 0 for fila in estado):
+            estado = [fila[:-1] for fila in estado]
+            cambios = True
+
+    return estado
+
+
 def evolucionar(estado):
     # expande la matriz
     estado = expandir(estado)
@@ -108,7 +151,7 @@ def evolucionar(estado):
                 else:
                     nuevo_estado[f][c] = 0
 
-    return nuevo_estado
+    return comprimir(nuevo_estado)
 
 
 def contar_poblacion(estado):
@@ -142,11 +185,11 @@ def main():
 
         # cuento la poblacion de celulas vivos
         poblacion = contar_poblacion(estado)
-        print(f"Generacion {i + 1} con poblacion de {poblacion}:")
+        print(f"Generacion {i} con poblacion de {poblacion}:")
         imprimir_estado(estado)
 
         # si la poblacion de celulas vivos es 0, se detiene la iteracion
-        if i == 60:
+        if i == 100:
             break
 
 
