@@ -1,8 +1,11 @@
 #  Copyright (c) 2025. Departamento de Ingenieria de Sistemas y Computacion.
 from dataclasses import dataclass
-from typing import ClassVar, List
+from typing import ClassVar, List, Optional
 
 import numpy as np
+import seaborn as sns
+from matplotlib import pyplot as plt
+from tqdm import tqdm
 from typeguard import typechecked
 
 
@@ -10,7 +13,7 @@ from typeguard import typechecked
 @dataclass
 class GameOfLife:
     """
-    The Game of Life: This class implements the Game of Life based on a cellular
+    The Conway's Game of Life: This class implements the game on a cellular
     automaton. It uses a numpy array to represent the state of the game.
     """
 
@@ -18,10 +21,10 @@ class GameOfLife:
     state: np.ndarray
 
     # the current generation
-    generation: int = 0
+    generation: int = np.int64(0)
 
     # the max number of generations
-    max_generations: int = 1000
+    max_generations: int = np.int64(1000)
 
     # the representation of a dead cell
     dead_cell_char: str = " "
@@ -38,6 +41,10 @@ class GameOfLife:
         # the state need to be a numpy array
         if not isinstance(self.state, np.ndarray):
             raise TypeError("Game of Life must be a numpy array")
+
+        # convert the state to a numpy array of uint8
+        if self.state.dtype != np.uint8:
+            self.state = self.state.astype(np.uint8)
 
         # the state need to be a 2D numpy array
         if self.state.ndim != 2:
@@ -65,21 +72,160 @@ class GameOfLife:
         if not all(isinstance(row, list) for row in initial_state):
             raise ValueError("Initial state must be a list of lists")
 
-        return cls(state=np.array(initial_state))
+        return cls(state=np.array(initial_state, dtype=np.uint8))
 
-    def population(self) -> np.int64:
+    def population(self) -> np.uint64:
         """Sum all the ALIVE cells"""
-        return np.sum(self.state)
+        return np.sum(self.state, dtype=np.uint64)
 
     def __str__(self) -> str:
-        """Return a string representation of the current state"""
-        return "\n".join(
+        """
+        Return a string representation of the current state
+        """
+        grid = "\n".join(
             "".join(
                 self.live_cell_char if cell == self.ALIVE else self.dead_cell_char
                 for cell in row
             )
             for row in self.state
         )
+        header = (
+            f"Generation: {self.generation:04d} | Population: {self.population():04d}\n"
+        )
+        separator = "-" * max(len(line) for line in grid.split("\n")) + "\n"
+        return header + separator + grid
+
+    @typechecked
+    def _count_neighbors(self, state: np.ndarray, row: int, col: int) -> np.uint8:
+        """
+        Count the number of alive neighbors for a given cell in the state.
+        """
+        neighbors = 0
+
+        for r in range(row - 1, row + 2):
+            for c in range(col - 1, col + 2):
+                # skip the cell itself
+                if r == row and c == col:
+                    continue
+                # check if the neighbor is within bounds
+                if 0 <= r < state.shape[0] and 0 <= c < state.shape[1]:
+                    neighbors += state[r, c]
+        return np.uint8(neighbors)
+
+    @typechecked
+    def _compress(self, state: np.ndarray) -> np.ndarray:
+        """
+        Compress the state by removing border rows and columns that contain only dead cells (zeros).
+        """
+        # handle edge case: if array is empty or has zero dimensions
+        if state.size == 0 or state.shape[0] == 0 or state.shape[1] == 0:
+            return np.zeros((1, 1), dtype=state.dtype)
+
+        # find rows and columns that have at least one live cell (non-zero)
+        live_rows = np.any(state != 0, axis=1)
+        live_cols = np.any(state != 0, axis=0)
+
+        # if no live cells exist, return a minimal grid
+        if not np.any(live_rows) or not np.any(live_cols):
+            return np.zeros((1, 1), dtype=state.dtype)
+
+        # find the boundaries of live cells
+        row_indices = np.where(live_rows)[0]
+        col_indices = np.where(live_cols)[0]
+
+        # extract the minimal bounding box containing all live cells
+        min_row, max_row = row_indices[0], row_indices[-1]
+        min_col, max_col = col_indices[0], col_indices[-1]
+
+        return state[min_row : max_row + 1, min_col : max_col + 1]
+
+    def evolve(self) -> "GameOfLife":
+        """
+        Evolve the current state to the next generation.
+        """
+        # the dimensions of the state
+        rows, cols = self.state.shape
+
+        # expand the state: one row and column at the beginning and end
+        expanded_state = np.zeros((rows + 2, cols + 2))
+
+        # fill the expanded state with the current state in the middle
+        expanded_state[1:-1, 1:-1] = self.state
+
+        # the new state is the same size as the expanded state
+        new_state = np.zeros(expanded_state.shape)
+
+        # iterate over the expanded state
+        for r in range(rows + 2):
+            for c in range(cols + 2):
+                # count the number of alive neighbors
+                neighbors = self._count_neighbors(expanded_state, r, c)
+
+                # apply the rules of the game
+                if expanded_state[r, c] == self.ALIVE:
+                    if neighbors < 2 or neighbors > 3:
+                        new_state[r, c] = self.DEAD
+                    else:
+                        new_state[r, c] = self.ALIVE
+                else:
+                    if neighbors == 3:
+                        new_state[r, c] = self.ALIVE
+
+        # assign the new_state pos-compression
+        self.state = self._compress(new_state)
+
+        # increment the generation
+        self.generation += 1
+        return self
+
+    @typechecked
+    def run_simulation(
+        self,
+        max_generations: Optional[int] = None,
+        show_progress: Optional[bool] = False,
+    ) -> str:
+        """
+        Run the simulation for a given number of generations.
+        """
+        if max_generations is None:
+            max_generations = self.max_generations
+
+        if max_generations <= 0:
+            raise ValueError("max_generations must be positive")
+
+        for _ in tqdm(
+            range(0, max_generations),
+            desc="Evolving generations",
+            unit="gen",
+            ncols=200,
+            disable=not show_progress,
+        ):
+            # generate the next generation
+            self.evolve()
+            # if the population is 0, break the loop
+            if self.population() == 0:
+                return "WARN: Stopping simulation at:\n" + str(self)
+
+        return str(self)
+
+
+@typechecked
+def plot_game_of_life(game_of_life: GameOfLife) -> None:
+    fig = plt.figure(facecolor="white")
+
+    ax = plt.gca()
+    sns.heatmap(
+        game_of_life.state,  # ndarray
+        cmap="binary",
+        cbar=False,
+        square=True,
+        linewidths=0.25,
+        linecolor="#f0f0f0",
+        ax=ax,
+    )
+
+    plt.tight_layout()
+    plt.show()
 
 
 def main():
@@ -94,8 +240,15 @@ def main():
     game_of_life = GameOfLife.from_list(state)
 
     # print the initial state
-    print(f"The current live cells is: {game_of_life.population()}.")
     print(game_of_life)
+    plot_game_of_life(game_of_life)
+
+    # run the simulation
+    game_of_life.run_simulation(max_generations=150, show_progress=True)
+
+    # print the final state
+    print(game_of_life)
+    plot_game_of_life(game_of_life)
 
 if __name__ == "__main__":
     main()
