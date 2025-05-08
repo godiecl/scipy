@@ -1,9 +1,12 @@
 #  Copyright (c) 2025. Departamento de Ingenieria de Sistemas y Computacion.
+import logging
 from dataclasses import dataclass
 from typing import ClassVar, List, Optional
 
 import numpy as np
 import seaborn as sns
+from benchmark import benchmark
+from logger import configure_logging
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from typeguard import typechecked
@@ -210,25 +213,79 @@ class GameOfLife:
 
 
 @typechecked
-def plot_game_of_life(game_of_life: GameOfLife) -> None:
-    fig = plt.figure(facecolor="white")
+def plot_game_of_life(game_of_life: GameOfLife, path: Optional[str] = None) -> None:
+    """
+    Draw the Game of Life using matplotlib and pyplot.
+    """
 
+    # define the figure
+    fig = plt.figure(facecolor="white", dpi=200)
+
+    # get the current axis
     ax = plt.gca()
+
+    # hide the axis
+    ax.set_axis_off()
+
     sns.heatmap(
         game_of_life.state,  # ndarray
         cmap="binary",
         cbar=False,
         square=True,
         linewidths=0.25,
-        linecolor="#f0f0f0",
+        linecolor="#f0f0f0",  # rgb
         ax=ax,
     )
 
+    # set the title
+    plt.title("The Conway's Game of Life")
+
+    # create some stats
+    # the total of space inside the grid
+    total_space = game_of_life.state.shape[0] * game_of_life.state.shape[1]
+    density = game_of_life.population() / total_space
+
+    stats = (
+        f"Generation: {game_of_life.generation}\n"
+        f"Population: {game_of_life.population()}\n"
+        f"Grid size: {game_of_life.state.shape[0]} x {game_of_life.state.shape[1]}\n"
+        f"Density: {density:.2f}"
+    )
+
+    # plot the stats
+    plt.figtext(
+        0.99,
+        0.01,
+        stats,
+        horizontalalignment="right",
+        verticalalignment="bottom",
+        fontsize=10,
+        bbox=dict(facecolor="white", alpha=0.8, boxstyle="round", pad=0.5),
+    )
+
+    # compress the layout
     plt.tight_layout()
+
+    # we need to save the plot?
+    if path is not None:
+        plt.savefig(
+            f"{path}/game_of_life-{game_of_life.generation:04d}.png",
+            dpi=200,
+            bbox_inches="tight",
+        )
+
+    # show time !
     plt.show()
 
 
 def main():
+    # configure the logger
+    configure_logging(logging.DEBUG)
+
+    # get the logger
+    log = logging.getLogger(__name__)
+    log.debug("Starting main ..")
+
     # initial state
     state = [
         [1, 1, 0],
@@ -241,14 +298,17 @@ def main():
 
     # print the initial state
     print(game_of_life)
-    plot_game_of_life(game_of_life)
 
     # run the simulation
-    game_of_life.run_simulation(max_generations=150, show_progress=True)
+    with benchmark(operation_name="run_simulation", log=log):
+        game_of_life.run_simulation(max_generations=1000, show_progress=True)
 
     # print the final state
     print(game_of_life)
-    plot_game_of_life(game_of_life)
+    # plot_game_of_life(game_of_life)
+    # plot_game_of_life(game_of_life, "../../output/")
+
+    log.debug("Done.")
 
 if __name__ == "__main__":
     main()
