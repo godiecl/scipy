@@ -16,6 +16,7 @@ def configure_logging(log_level: Union[int, str] = logging.INFO) -> None:
     # hide some libraries
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
     logging.getLogger("PIL").setLevel(logging.WARNING)
+    logging.getLogger("numba").setLevel(logging.WARNING)
 
     coloredlogs.install(
         level=log_level,
