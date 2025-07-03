@@ -8,6 +8,7 @@ import seaborn as sns
 from benchmark import benchmark
 from logger import configure_logging
 from matplotlib import pyplot as plt
+from scipy.ndimage import convolve
 from tqdm import tqdm
 from typeguard import typechecked
 
@@ -23,10 +24,10 @@ class GameOfLife:
     state: np.ndarray
 
     # the current generation
-    generation: int = np.int64(0)
+    generation: int = 0
 
     # the max number of generations
-    max_generations: int = np.int64(1000)
+    max_generations: int = 1000
 
     # the representation of a dead cell
     dead_cell_char: str = " "
@@ -38,9 +39,20 @@ class GameOfLife:
     ALIVE: ClassVar[int] = 1
     DEAD: ClassVar[int] = 0
 
-    # the validation function
+    # kernel to count the neighbors
+    NEIGHBOR_KERNEL = np.array(
+        [
+            [1, 1, 1],  #
+            [1, 0, 1],  #
+            [1, 1, 1],  #
+        ],
+        dtype=np.uint8,
+    )
+
     @typechecked
     def __post_init__(self) -> None:
+        """Post-initialization checks for the Game of Life class."""
+
         # the state need to be a numpy array
         if not isinstance(self.state, np.ndarray):
             raise TypeError("Game of Life must be a numpy array")
@@ -76,16 +88,14 @@ class GameOfLife:
 
         return cls(state=np.array(initial_state, dtype=np.uint8))
 
-    @typechecked
+    # @typechecked
     def population(self) -> np.uint64:
-        """sum all the ALIVE cells"""
+        """sum all the ALIVE cells."""
         return np.sum(self.state, dtype=np.uint64)
 
     @typechecked
     def __str__(self) -> str:
-        """
-        Return a string representation of the current state
-        """
+        """Return a string representation of the current state."""
         grid = "\n".join(
             "".join(
                 self.live_cell_char if cell == self.ALIVE else self.dead_cell_char
@@ -99,79 +109,58 @@ class GameOfLife:
         separator = "-" * max(len(line) for line in grid.split("\n")) + "\n"
         return header + separator + grid
 
-    @typechecked
-    def _count_neighbors(self, state: np.ndarray, row: int, col: int) -> np.uint8:
-        """
-        Count the number of alive neighbors for a given cell in the state.
-        """
-        neighbors = 0
-
-        for r in range(row - 1, row + 2):
-            for c in range(col - 1, col + 2):
-                # skip the cell itself
-                if r == row and c == col:
-                    continue
-                # check if the neighbor is within bounds
-                if 0 <= r < state.shape[0] and 0 <= c < state.shape[1]:
-                    neighbors += state[r, c]
-        return np.uint8(neighbors)
-
-    @typechecked
+    # @typechecked
+    # noinspection PyMethodMayBeStatic
     def _compress(self, state: np.ndarray) -> np.ndarray:
         """Compress the state by removing border rows and columns that contain only dead cells (zeros)."""
-        # handle edge case: if array is empty or has zero dimensions
-        if state.size == 0 or state.shape[0] == 0 or state.shape[1] == 0:
+
+        if state.size == 0:
             return np.zeros((1, 1), dtype=state.dtype)
 
-        # find rows and columns that have at least one live cell (non-zero)
+        # find rows and columns with any live cells
         live_rows = np.any(state != 0, axis=1)
         live_cols = np.any(state != 0, axis=0)
 
-        # if no live cells exist, return a minimal grid
-        if not np.any(live_rows) or not np.any(live_cols):
+        if not live_rows.any() or not live_cols.any():
             return np.zeros((1, 1), dtype=state.dtype)
 
-        # find the boundaries of live cells
-        row_indices = np.where(live_rows)[0]
-        col_indices = np.where(live_cols)[0]
+        # get bounding box indices
+        row_min, row_max = np.where(live_rows)[0][[0, -1]]
+        col_min, col_max = np.where(live_cols)[0][[0, -1]]
 
-        # extract the minimal bounding box containing all live cells
-        min_row, max_row = row_indices[0], row_indices[-1]
-        min_col, max_col = col_indices[0], col_indices[-1]
+        return state[row_min : row_max + 1, col_min : col_max + 1]
 
-        return state[min_row : max_row + 1, min_col : max_col + 1]
-
-    @typechecked
+    # @typechecked
     def evolve(self) -> "GameOfLife":
         """Evolve the current state to the next generation."""
 
-        # the dimensions of the state
-        rows, cols = self.state.shape
+        # padded state around the original state
+        padded_state = np.pad(
+            self.state,
+            pad_width=1,
+            mode="constant",
+            constant_values=self.DEAD,  # fill with dead cells
+        )
 
-        # expand the state: one row and column at the beginning and end
-        expanded_state = np.zeros((rows + 2, cols + 2))
+        # count the neighbors using convolution
+        neighbors = convolve(
+            padded_state,
+            self.NEIGHBOR_KERNEL,
+            mode="constant",
+            cval=self.DEAD,  # fill with dead cells
+        )
 
-        # fill the expanded state with the current state in the middle
-        expanded_state[1:-1, 1:-1] = self.state
+        # determine which cells are alive
+        alive = padded_state == self.ALIVE
 
-        # the new state is the same size as the expanded state
-        new_state = np.zeros(expanded_state.shape)
-
-        # iterate over the expanded state
-        for r in range(rows + 2):
-            for c in range(cols + 2):
-                # count the number of alive neighbors
-                neighbors = self._count_neighbors(expanded_state, r, c)
-
-                # apply the rules of the game
-                if expanded_state[r, c] == self.ALIVE:
-                    if neighbors < 2 or neighbors > 3:
-                        new_state[r, c] = self.DEAD
-                    else:
-                        new_state[r, c] = self.ALIVE
-                else:
-                    if neighbors == 3:
-                        new_state[r, c] = self.ALIVE
+        # apply the rules of the Game of Life vectorized
+        # https://numpy.org/doc/stable/reference/generated/numpy.where.html
+        new_state = np.where(
+            (alive & ((neighbors == 2) | (neighbors == 3)))
+            | (~alive & (neighbors == 3)),
+            self.ALIVE,
+            self.DEAD,
+        ).astype(np.uint8)
 
         # assign the new_state pos-compression
         self.state = self._compress(new_state)
@@ -194,15 +183,17 @@ class GameOfLife:
         if max_generations <= 0:
             raise ValueError("max_generations must be positive")
 
+        # iterate over the number of generations
         for _ in tqdm(
             range(0, max_generations),
             desc="Evolving generations",
             unit="gen",
-            ncols=200,
+            ncols=200,  # progress bar width
             disable=not show_progress,
         ):
             # generate the next generation
             self.evolve()
+
             # if the population is 0, break the loop
             if self.population() == 0:
                 return "WARN: Stopping simulation at:\n" + str(self)
@@ -296,11 +287,13 @@ def main():
     print(game_of_life)
 
     # run the simulation
+    max_generations = 3000
+    log.debug(f"Running simulation for {max_generations} generations ...")
     with benchmark(operation_name="run_simulation", log=log):
-        game_of_life.run_simulation(max_generations=1000, show_progress=True)
+        game_of_life.run_simulation(max_generations, show_progress=True)
 
     # print the final state
-    print(game_of_life)
+    # print(game_of_life)
     # plot_game_of_life(game_of_life)
     # plot_game_of_life(game_of_life, "../../output/")
 
@@ -308,4 +301,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # Run the main in a profile fashion
+    # cProfile.run("main()", "../../output/game_of_life.prof")
     main()
