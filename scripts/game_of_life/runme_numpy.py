@@ -12,12 +12,11 @@ from tqdm import tqdm
 from typeguard import typechecked
 
 
-@typechecked
 @dataclass
 class GameOfLife:
     """
-    The Conway's Game of Life: This class implements the game on a cellular
-    automaton. It uses a numpy array to represent the state of the game.
+    The Conway's Game of Life: This class implements the game on a cellular automaton.
+    It uses a numpy array to represent the state of the game.
     """
 
     # the state (matrix)
@@ -40,6 +39,7 @@ class GameOfLife:
     DEAD: ClassVar[int] = 0
 
     # the validation function
+    @typechecked
     def __post_init__(self) -> None:
         # the state need to be a numpy array
         if not isinstance(self.state, np.ndarray):
@@ -64,10 +64,9 @@ class GameOfLife:
     @classmethod
     @typechecked
     def from_list(cls, initial_state: List[List[int]]) -> "GameOfLife":
-        """
-        Create a GameOfLife object from a list of lists.
-        """
-        # Validate the input
+        """Create a GameOfLife object from a list of lists."""
+
+        # validate the input
         if not initial_state:
             raise ValueError("Initial state cannot be empty")
 
@@ -77,10 +76,12 @@ class GameOfLife:
 
         return cls(state=np.array(initial_state, dtype=np.uint8))
 
+    @typechecked
     def population(self) -> np.uint64:
-        """Sum all the ALIVE cells"""
+        """sum all the ALIVE cells"""
         return np.sum(self.state, dtype=np.uint64)
 
+    @typechecked
     def __str__(self) -> str:
         """
         Return a string representation of the current state
@@ -117,9 +118,7 @@ class GameOfLife:
 
     @typechecked
     def _compress(self, state: np.ndarray) -> np.ndarray:
-        """
-        Compress the state by removing border rows and columns that contain only dead cells (zeros).
-        """
+        """Compress the state by removing border rows and columns that contain only dead cells (zeros)."""
         # handle edge case: if array is empty or has zero dimensions
         if state.size == 0 or state.shape[0] == 0 or state.shape[1] == 0:
             return np.zeros((1, 1), dtype=state.dtype)
@@ -142,10 +141,10 @@ class GameOfLife:
 
         return state[min_row : max_row + 1, min_col : max_col + 1]
 
+    @typechecked
     def evolve(self) -> "GameOfLife":
-        """
-        Evolve the current state to the next generation.
-        """
+        """Evolve the current state to the next generation."""
+
         # the dimensions of the state
         rows, cols = self.state.shape
 
@@ -187,9 +186,8 @@ class GameOfLife:
         max_generations: Optional[int] = None,
         show_progress: Optional[bool] = False,
     ) -> str:
-        """
-        Run the simulation for a given number of generations.
-        """
+        """Run the simulation for a given number of generations."""
+
         if max_generations is None:
             max_generations = self.max_generations
 
@@ -214,9 +212,7 @@ class GameOfLife:
 
 @typechecked
 def plot_game_of_life(game_of_life: GameOfLife, path: Optional[str] = None) -> None:
-    """
-    Draw the Game of Life using matplotlib and pyplot.
-    """
+    """Draw the Game of Life using matplotlib and pyplot."""
 
     # define the figure
     fig = plt.figure(facecolor="white", dpi=200)
@@ -309,6 +305,7 @@ def main():
     # plot_game_of_life(game_of_life, "../../output/")
 
     log.debug("Done.")
+
 
 if __name__ == "__main__":
     main()
