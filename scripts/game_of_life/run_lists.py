@@ -12,6 +12,13 @@ En cada celda se puede encontrar una celula que podria estar viva (1) o muerta
 https://es.wikipedia.org/wiki/Juego_de_la_vida
 """
 
+import logging
+
+from tqdm import tqdm
+
+from benchmark import benchmark
+from logger import configure_logging
+
 
 def imprimir_estado(estado):
     for fila in estado:
@@ -174,24 +181,31 @@ def main():
     print(f"Estado inicial con poblacion de {contar_poblacion(estado)}:")
     imprimir_estado(estado)
 
-    # iteracion para generar cada uno de los estados siguientes
-    i = 0
-    while True:
-        # genero un nuevo estado
-        estado = evolucionar(estado)
+    # run the simulation
+    max_generations = 2000
+    log.debug(f"Running simulation for {max_generations} generations ...")
+    with benchmark(operation_name="run_simulation", log=log):
+        for _ in tqdm(
+            range(0, max_generations),
+            desc="Evolving generations",
+            unit="gen",
+            ncols=200,
+        ):
+            # generate the next generation
+            estado = evolucionar(estado)
 
-        # incremento el contado de generaciones
-        i = i + 1
+            # if the population is 0, break the loop
+            population = contar_poblacion(estado)
+            if population == 0:
+                return "WARN: Stopping simulation at:\n" + str(estado)
 
-        # cuento la poblacion de celulas vivos
-        poblacion = contar_poblacion(estado)
-        print(f"Generacion {i} con poblacion de {poblacion}:")
-        imprimir_estado(estado)
-
-        # si la poblacion de celulas vivos es 0, se detiene la iteracion
-        if i == 100:
-            break
+    return None
 
 
 if __name__ == "__main__":
+    # configure the logger
+    configure_logging(logging.DEBUG)
+
+    # get the logger
+    log = logging.getLogger(__name__)
     main()
